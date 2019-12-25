@@ -20,21 +20,19 @@ type HeaderInterface interface {
 
 type TransportInterface interface {
 	Clear(conn net.Conn)
-	Handle(ctx context.Context, conn net.Conn, cmd uint16, headerBuff, buff []byte)
+	Handle(ctx context.Context, conn net.Conn, cmd uint16, buff []byte)
 }
 
 type Package struct {
-	conn       net.Conn
-	cmd        uint16
-	headerBuff []byte
-	buff       []byte
+	conn net.Conn
+	cmd  uint16
+	buff []byte
 }
 
-func newPackage(conn net.Conn, cmd uint16, headerBuff, buff []byte) *Package {
+func newPackage(conn net.Conn, cmd uint16, buff []byte) *Package {
 	return &Package{
-		conn:       conn,
-		cmd:        cmd,
-		headerBuff: headerBuff,
-		buff:       buff,
+		conn: conn,
+		cmd:  cmd,
+		buff: buff,
 	}
 }

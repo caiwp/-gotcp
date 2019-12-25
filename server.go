@@ -131,7 +131,7 @@ func (s *Server) handleConn(conn net.Conn, reader ReaderInterface) {
 		}
 
 		select {
-		case s.pc <- newPackage(conn, h.GetCmd(), hb[:n], buff):
+		case s.pc <- newPackage(conn, h.GetCmd(), buff):
 			if err = conn.SetDeadline(time.Now().Add(reader.Timeout())); err != nil {
 				reader.HandleError(fmt.Errorf("conn set deadline failed %w", err))
 			}
@@ -151,7 +151,7 @@ func (s *Server) parsePackage(transport TransportInterface) {
 		case p := <-s.pc:
 			s.saveConn(p.conn)
 
-			go transport.Handle(ctx, p.conn, p.cmd, p.headerBuff, p.buff)
+			go transport.Handle(ctx, p.conn, p.cmd, p.buff)
 
 		case <-s.done:
 			return
