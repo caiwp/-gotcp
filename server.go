@@ -11,8 +11,7 @@ import (
 
 type Server struct {
 	lis     net.Listener
-	mu      *sync.Mutex
-	conns   map[net.Conn]time.Time
+	conns   sync.Map // net.Conn time.Time
 	maxConn int
 
 	pc   chan *Package
@@ -21,17 +20,10 @@ type Server struct {
 
 func NewServer(listener net.Listener) *Server {
 	return &Server{
-		lis:   listener,
-		mu:    new(sync.Mutex),
-		conns: make(map[net.Conn]time.Time),
-
+		lis:  listener,
 		pc:   make(chan *Package, 1000),
 		done: make(chan struct{}),
 	}
-}
-
-func (s *Server) SetMaxConn(num int) {
-	s.maxConn = num
 }
 
 func (s *Server) ListenAndServe(transport TransportInterface, reader ReaderInterface) {
@@ -64,11 +56,6 @@ func (s *Server) ListenAndServe(transport TransportInterface, reader ReaderInter
 
 		tempDelay = 0
 
-		if !s.isThrottling() {
-			_ = conn.Close()
-			continue
-		}
-
 		s.saveConn(conn)
 
 		go func() {
@@ -78,30 +65,13 @@ func (s *Server) ListenAndServe(transport TransportInterface, reader ReaderInter
 	}
 }
 
-func (s *Server) isThrottling() bool {
-	if s.maxConn <= 0 {
-		return true
-	}
-	if len(s.conns) > s.maxConn {
-		return false
-	}
-	return true
-}
-
 func (s *Server) saveConn(conn net.Conn) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	s.conns[conn] = time.Now()
+	s.conns.Store(conn, time.Now())
 }
 
 func (s *Server) delConn(conn net.Conn, transport TransportInterface) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
 	transport.Clear(conn)
-
-	delete(s.conns, conn)
+	s.conns.Delete(conn)
 	_ = conn.Close()
 }
 
