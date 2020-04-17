@@ -5,14 +5,13 @@ import (
 	"fmt"
 	"io"
 	"net"
-	"sync"
 	"time"
 )
 
 type Server struct {
-	lis     net.Listener
-	conns   sync.Map // net.Conn time.Time
-	maxConn int
+	lis          net.Listener
+	maxCount     int
+	currentCount int
 
 	pc   chan *Package
 	done chan struct{}
@@ -22,7 +21,7 @@ func NewServer(listener net.Listener) *Server {
 	return &Server{
 		lis:  listener,
 		pc:   make(chan *Package, 1000),
-		done: make(chan struct{}),
+		done: make(chan struct{}, 1),
 	}
 }
 
@@ -56,7 +55,12 @@ func (s *Server) ListenAndServe(transport TransportInterface, reader ReaderInter
 
 		tempDelay = 0
 
-		s.saveConn(conn)
+		if !s.isThrottling() {
+			_ = conn.Close()
+			continue
+		}
+
+		s.currentCount++
 
 		go func() {
 			s.handleConn(conn, reader)
@@ -65,14 +69,24 @@ func (s *Server) ListenAndServe(transport TransportInterface, reader ReaderInter
 	}
 }
 
-func (s *Server) saveConn(conn net.Conn) {
-	s.conns.Store(conn, time.Now())
-}
-
 func (s *Server) delConn(conn net.Conn, transport TransportInterface) {
 	transport.Clear(conn)
-	s.conns.Delete(conn)
 	_ = conn.Close()
+	s.currentCount--
+}
+
+func (s *Server) SetMaxCount(cnt int) {
+	s.maxCount = cnt
+}
+
+func (s *Server) isThrottling() bool {
+	if s.maxCount <= 0 {
+		return true
+	}
+	if s.maxCount < s.currentCount {
+		return false
+	}
+	return true
 }
 
 func (s *Server) handleConn(conn net.Conn, reader ReaderInterface) {
@@ -119,8 +133,6 @@ func (s *Server) parsePackage(transport TransportInterface) {
 	for {
 		select {
 		case p := <-s.pc:
-			s.saveConn(p.conn)
-
 			go transport.Handle(ctx, p.conn, p.cmd, p.buff)
 
 		case <-s.done:
